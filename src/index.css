@@ -1,0 +1,110 @@
+/* Google Fonts - DEBE IR PRIMERO */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+/* ============================================================================
+   POKER SALA - DESIGN SYSTEM
+   Tema: Luxury Casino / Dark Elegance
+   ============================================================================ */
+
+@theme {
+  /* Colores principales */
+  --color-midnight: #0a0a0f;
+  --color-charcoal: #141419;
+  --color-slate: #1e1e26;
+  --color-graphite: #2a2a35;
+  --color-silver: #8b8b9a;
+  --color-pearl: #e8e8ed;
+  --color-ivory: #f5f5f7;
+  
+  /* Colores de acento */
+  --color-gold: #d4af37;
+  --color-gold-light: #f0d875;
+  --color-gold-dark: #a68a2a;
+  --color-emerald: #10b981;
+  --color-ruby: #ef4444;
+  --color-sapphire: #3b82f6;
+  --color-amber: #f59e0b;
+  
+  /* Colores de estado */
+  --color-success: #22c55e;
+  --color-warning: #eab308;
+  --color-error: #dc2626;
+  --color-info: #0ea5e9;
+  
+  /* Tipografía */
+  --font-display: "Playfair Display", Georgia, serif;
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+  
+  /* Sombras */
+  --shadow-glow: 0 0 20px rgba(212, 175, 55, 0.3);
+  --shadow-glow-sm: 0 0 10px rgba(212, 175, 55, 0.2);
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.4);
+  --shadow-elevated: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* ============================================================================
+   BASE STYLES
+   ============================================================================ */
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-midnight);
+  color: var(--color-pearl);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background-color: var(--color-gold);
+  color: var(--color-midnight);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-charcoal);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-graphite);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-gold-dark);
+}
+
+/* ============================================================================
+   ANIMACIONES
+   ============================================================================ */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes pulse-gold {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.4); }
+  50% { box-shadow: 0 0 0 10px rgba(212, 175, 55, 0); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}

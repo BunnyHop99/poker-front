@@ -1,0 +1,13 @@
+export { default as LoginPage } from './LoginPage';
+export { default as DashboardPage } from './DashboardPage';
+export { default as MesasPage } from './MesasPage';
+export { default as JugadoresPage } from './JugadoresPage';
+export { default as FichasPage } from './FichasPage';
+export { default as VentasPage } from './VentasPage';
+export { default as CobrosPage } from './CobrosPage';
+export { default as GastosPage } from './GastosPage';
+export { default as TurnoPage } from './TurnoPage';
+export { default as RakePage } from './RakePage';
+export { default as PropinasPage } from './PropinasPage';
+export { default as CierrePage } from './CierrePage';
+export { default as PersonalPage } from './PersonalPage';
