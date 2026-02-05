@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Play, Square, Users, Clock, DollarSign, Plus, Edit, Trash2 } from 'lucide-react';
+import { Play, Square, Users, Clock, DollarSign, Plus, Edit, Trash2, RotateCcw, Power } from 'lucide-react';
 import { Button, Card, Badge, Modal, Input, Table, Alert } from '../components/ui';
 import { mesaService } from '../services/api';
 import { useAuthStore } from '../store/authStore';
+
+// ============================================================================
+// TIPOS
+// ============================================================================
 
 interface Mesa {
   id_mesa: number;
@@ -27,39 +31,56 @@ interface SesionActiva {
   total_rake: number;
 }
 
+// ============================================================================
+// COMPONENTE
+// ============================================================================
+
 export default function MesasPage() {
   const { isGerente } = useAuthStore();
+
+  // ── datos ──────────────────────────────────────────────────────────────────
   const [mesas, setMesas] = useState<Mesa[]>([]);
+  const [mesasInactivas, setMesasInactivas] = useState<Mesa[]>([]);
   const [sesionesActivas, setSesionesActivas] = useState<SesionActiva[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  // Modales
+
+  // ── modales ────────────────────────────────────────────────────────────────
   const [crearMesaModal, setCrearMesaModal] = useState(false);
   const [editarMesaModal, setEditarMesaModal] = useState<Mesa | null>(null);
   const [iniciarSesionModal, setIniciarSesionModal] = useState<Mesa | null>(null);
-  
-  // Form crear/editar mesa
+
+  // ── modo crear: 'nueva' | 'existente' ──────────────────────────────────────
+  const [modoCrear, setModoCrear] = useState<'nueva' | 'existente'>('nueva');
+  const [mesaExistenteSel, setMesaExistenteSel] = useState<Mesa | null>(null);
+
+  // ── form crear/editar ──────────────────────────────────────────────────────
   const [mesaForm, setMesaForm] = useState({
     numero_mesa: '',
     nombre: '',
     capacidad: '9',
     tipo_juego: 'NLHE',
   });
-  
-  // Form iniciar sesion
+
+  // ── form sesión ────────────────────────────────────────────────────────────
   const [stakes, setStakes] = useState('1/2');
   const [procesando, setProcesando] = useState(false);
+
+  // ============================================================================
+  // FETCH
+  // ============================================================================
 
   const fetchData = async () => {
     try {
       setError(null);
-      const [mesasData, sesionesData] = await Promise.all([
+      const [mesasData, sesionesData, inactivasData] = await Promise.all([
         mesaService.getAll(),
         mesaService.getSesionesActivas(),
+        mesaService.getInactivas(),
       ]);
       setMesas(mesasData || []);
       setSesionesActivas(sesionesData || []);
+      setMesasInactivas(inactivasData || []);
     } catch (err: any) {
       console.error('Error:', err);
       setError(err.response?.data?.detail || 'Error al cargar datos');
@@ -72,28 +93,55 @@ export default function MesasPage() {
     fetchData();
   }, []);
 
-  const resetMesaForm = () => {
+  // ============================================================================
+  // HELPERS
+  // ============================================================================
+
+  const resetCrearModal = () => {
+    setModoCrear('nueva');
+    setMesaExistenteSel(null);
     setMesaForm({ numero_mesa: '', nombre: '', capacidad: '9', tipo_juego: 'NLHE' });
   };
 
+  const getMesaSesion = (idMesa: number) => sesionesActivas.find((s) => s.id_mesa === idMesa);
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(value || 0);
+
+  const formatTime = (time: string) =>
+    new Date(time).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+
+  // ============================================================================
+  // HANDLERS — MESAS
+  // ============================================================================
+
+  /** Crear nueva mesa o reactivar existente */
   const handleCrearMesa = async () => {
-    if (!mesaForm.numero_mesa) {
-      alert('El número de mesa es requerido');
-      return;
-    }
     setProcesando(true);
     try {
-      const data: any = {
-        numero_mesa: Number(mesaForm.numero_mesa),
-        capacidad: Number(mesaForm.capacidad) || 9,
-        tipo_juego: mesaForm.tipo_juego || 'NLHE',
-      };
-      if (mesaForm.nombre && mesaForm.nombre.trim()) {
-        data.nombre = mesaForm.nombre.trim();
+      if (modoCrear === 'existente') {
+        // Reactivar mesa inactiva existente → PUT con activa: true
+        if (!mesaExistenteSel) return;
+        await mesaService.actualizar(mesaExistenteSel.id_mesa, { activa: true });
+      } else {
+        // Nueva mesa
+        if (!mesaForm.numero_mesa) {
+          alert('El número de mesa es requerido');
+          return;
+        }
+        const data: any = {
+          numero_mesa: Number(mesaForm.numero_mesa),
+          capacidad: Number(mesaForm.capacidad) || 9,
+          tipo_juego: mesaForm.tipo_juego || 'NLHE',
+        };
+        if (mesaForm.nombre.trim()) {
+          data.nombre = mesaForm.nombre.trim();
+        }
+        await mesaService.crear(data);
       }
-      await mesaService.crear(data);
+
       setCrearMesaModal(false);
-      resetMesaForm();
+      resetCrearModal();
       await fetchData();
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Error al crear mesa');
@@ -102,6 +150,7 @@ export default function MesasPage() {
     }
   };
 
+  /** Guardar edición (nombre / capacidad) */
   const handleEditarMesa = async () => {
     if (!editarMesaModal) return;
     setProcesando(true);
@@ -109,10 +158,9 @@ export default function MesasPage() {
       await mesaService.actualizar(editarMesaModal.id_mesa, {
         nombre: mesaForm.nombre || null,
         capacidad: Number(mesaForm.capacidad),
-        activa: editarMesaModal.activa,
       });
       setEditarMesaModal(null);
-      resetMesaForm();
+      resetCrearModal();
       await fetchData();
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Error al actualizar mesa');
@@ -121,6 +169,7 @@ export default function MesasPage() {
     }
   };
 
+  /** Toggle activa / inactiva */
   const handleToggleActiva = async (mesa: Mesa) => {
     try {
       await mesaService.actualizar(mesa.id_mesa, { activa: !mesa.activa });
@@ -129,6 +178,32 @@ export default function MesasPage() {
       alert(err.response?.data?.detail || 'Error al cambiar estado');
     }
   };
+
+  /** Eliminar mesa permanentemente */
+  const handleEliminarMesa = async (mesa: Mesa) => {
+    if (!confirm(`¿Eliminar la Mesa ${mesa.numero_mesa} permanentemente? Esta acción no se puede revertir.`)) return;
+    try {
+      await mesaService.eliminar(mesa.id_mesa);
+      await fetchData();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'No se pudo eliminar la mesa');
+    }
+  };
+
+  /** Abrir modal editar con datos prefilled */
+  const openEditModal = (mesa: Mesa) => {
+    setMesaForm({
+      numero_mesa: String(mesa.numero_mesa),
+      nombre: mesa.nombre || '',
+      capacidad: String(mesa.capacidad),
+      tipo_juego: mesa.tipo_juego || 'NLHE',
+    });
+    setEditarMesaModal(mesa);
+  };
+
+  // ============================================================================
+  // HANDLERS — SESIONES
+  // ============================================================================
 
   const handleIniciarSesion = async () => {
     if (!iniciarSesionModal) return;
@@ -155,23 +230,9 @@ export default function MesasPage() {
     }
   };
 
-  const openEditModal = (mesa: Mesa) => {
-    setMesaForm({
-      numero_mesa: String(mesa.numero_mesa),
-      nombre: mesa.nombre || '',
-      capacidad: String(mesa.capacidad),
-      tipo_juego: mesa.tipo_juego || 'NLHE',
-    });
-    setEditarMesaModal(mesa);
-  };
-
-  const formatCurrency = (value: number) =>
-    new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(value || 0);
-
-  const formatTime = (time: string) =>
-    new Date(time).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
-
-  const getMesaSesion = (idMesa: number) => sesionesActivas.find((s) => s.id_mesa === idMesa);
+  // ============================================================================
+  // LOADING
+  // ============================================================================
 
   if (loading) {
     return (
@@ -181,18 +242,22 @@ export default function MesasPage() {
     );
   }
 
+  // ============================================================================
+  // RENDER
+  // ============================================================================
+
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-pearl">Mesas</h1>
           <p className="text-silver">Gestión de mesas y sesiones de juego</p>
         </div>
         <div className="flex items-center gap-3">
-          <Badge variant="info">{sesionesActivas.length} mesas activas</Badge>
+          <Badge variant="info">{sesionesActivas.length} mesa{sesionesActivas.length !== 1 ? 's' : ''} en juego</Badge>
           {isGerente() && (
-            <Button onClick={() => { resetMesaForm(); setCrearMesaModal(true); }}>
+            <Button onClick={() => { resetCrearModal(); setCrearMesaModal(true); }}>
               <Plus className="w-4 h-4" />
               Nueva Mesa
             </Button>
@@ -202,7 +267,7 @@ export default function MesasPage() {
 
       {error && <Alert type="error">{error}</Alert>}
 
-      {/* Sesiones Activas */}
+      {/* ── Sesiones Activas ────────────────────────────────────────────────── */}
       {sesionesActivas.length > 0 && (
         <>
           <h2 className="text-lg font-semibold text-pearl">Mesas en Juego</h2>
@@ -257,13 +322,13 @@ export default function MesasPage() {
         </>
       )}
 
-      {/* Todas las Mesas */}
+      {/* ── Tabla de Mesas ──────────────────────────────────────────────────── */}
       <Card title="Configuración de Mesas" noPadding>
         {mesas.length === 0 ? (
           <div className="p-8 text-center">
             <p className="text-silver mb-4">No hay mesas configuradas</p>
             {isGerente() && (
-              <Button onClick={() => { resetMesaForm(); setCrearMesaModal(true); }}>
+              <Button onClick={() => { resetCrearModal(); setCrearMesaModal(true); }}>
                 <Plus className="w-4 h-4" />
                 Crear Primera Mesa
               </Button>
@@ -272,17 +337,36 @@ export default function MesasPage() {
         ) : (
           <Table
             columns={[
-              { key: 'numero_mesa', header: '#', className: 'w-16', render: (m) => <span className="font-bold text-gold">{m.numero_mesa}</span> },
-              { key: 'nombre', header: 'Nombre', render: (m) => m.nombre || <span className="text-silver">-</span> },
-              { key: 'capacidad', header: 'Capacidad', render: (m) => `${m.capacidad} asientos` },
-              { key: 'tipo', header: 'Tipo', render: (m) => <Badge variant="default">{m.tipo_juego || 'NLHE'}</Badge> },
+              {
+                key: 'numero_mesa',
+                header: '#',
+                className: 'w-16',
+                render: (m) => <span className="font-bold text-gold">{m.numero_mesa}</span>,
+              },
+              {
+                key: 'nombre',
+                header: 'Nombre',
+                render: (m) => m.nombre || <span className="text-silver">-</span>,
+              },
+              {
+                key: 'capacidad',
+                header: 'Capacidad',
+                render: (m) => `${m.capacidad} asientos`,
+              },
+              {
+                key: 'tipo',
+                header: 'Tipo',
+                render: (m) => <Badge variant="default">{m.tipo_juego || 'NLHE'}</Badge>,
+              },
               {
                 key: 'estado',
                 header: 'Estado',
                 render: (m) => {
                   const sesion = getMesaSesion(m.id_mesa);
                   if (sesion) return <Badge variant="success">En Juego</Badge>;
-                  return m.activa ? <Badge variant="default">Disponible</Badge> : <Badge variant="error">Inactiva</Badge>;
+                  return m.activa
+                    ? <Badge variant="default">Disponible</Badge>
+                    : <Badge variant="error">Inactiva</Badge>;
                 },
               },
               {
@@ -292,29 +376,47 @@ export default function MesasPage() {
                 render: (m) => {
                   const sesion = getMesaSesion(m.id_mesa);
                   return (
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-end items-center gap-2">
+                      {/* Botón Iniciar sesión — solo mesas activas sin sesión */}
                       {!sesion && m.activa && isGerente() && (
                         <Button size="sm" onClick={() => setIniciarSesionModal(m)}>
                           <Play className="w-4 h-4" />
                           Iniciar
                         </Button>
                       )}
+
                       {isGerente() && (
                         <>
+                          {/* Toggle activa / inactiva — no si tiene sesión activa */}
+                          {!sesion && (
+                            <button
+                              onClick={() => handleToggleActiva(m)}
+                              title={m.activa ? 'Desactivar mesa' : 'Activar mesa'}
+                              className={`
+                                relative w-10 h-5 rounded-full transition-colors duration-200
+                                focus:outline-none focus:ring-2 focus:ring-gold/50
+                                ${m.activa ? 'bg-emerald' : 'bg-graphite'}
+                              `}
+                            >
+                              <span
+                                className={`
+                                  absolute top-0.5 left-0.5 w-4 h-4 bg-pearl rounded-full shadow
+                                  transition-transform duration-200
+                                  ${m.activa ? 'translate-x-5' : 'translate-x-0'}
+                                `}
+                              />
+                            </button>
+                          )}
+
+                          {/* Editar */}
                           <Button variant="ghost" size="sm" onClick={() => openEditModal(m)}>
                             <Edit className="w-4 h-4" />
                           </Button>
+
+                          {/* Eliminar — solo si no tiene sesión activa */}
                           {!sesion && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleToggleActiva(m)}
-                            >
-                              {m.activa ? (
-                                <Trash2 className="w-4 h-4 text-ruby" />
-                              ) : (
-                                <Play className="w-4 h-4 text-emerald" />
-                              )}
+                            <Button variant="ghost" size="sm" onClick={() => handleEliminarMesa(m)}>
+                              <Trash2 className="w-4 h-4 text-ruby" />
                             </Button>
                           )}
                         </>
@@ -330,55 +432,120 @@ export default function MesasPage() {
         )}
       </Card>
 
-      {/* Modal Crear Mesa */}
+      {/* ══════════════════════════════════════════════════════════════════════
+          MODALES
+          ═════════════════════════════════════════════════════════════════════ */}
+
+      {/* ── Modal Crear / Reactivar Mesa ─────────────────────────────────── */}
       <Modal
         isOpen={crearMesaModal}
-        onClose={() => setCrearMesaModal(false)}
+        onClose={() => { setCrearMesaModal(false); resetCrearModal(); }}
         title="Nueva Mesa"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setCrearMesaModal(false)}>Cancelar</Button>
-            <Button onClick={handleCrearMesa} isLoading={procesando}>Crear Mesa</Button>
+            <Button variant="ghost" onClick={() => { setCrearMesaModal(false); resetCrearModal(); }}>
+              Cancelar
+            </Button>
+            <Button onClick={handleCrearMesa} isLoading={procesando}>
+              {modoCrear === 'existente' ? <><RotateCcw className="w-4 h-4" /> Reactivar</> : 'Crear Mesa'}
+            </Button>
           </>
         }
       >
         <div className="space-y-4">
-          <Input
-            label="Número de Mesa *"
-            type="number"
-            value={mesaForm.numero_mesa}
-            onChange={(e) => setMesaForm({ ...mesaForm, numero_mesa: e.target.value })}
-            placeholder="Ej: 1, 2, 3..."
-          />
-          <Input
-            label="Nombre (opcional)"
-            value={mesaForm.nombre}
-            onChange={(e) => setMesaForm({ ...mesaForm, nombre: e.target.value })}
-            placeholder="Ej: Mesa Principal, VIP..."
-          />
-          <Input
-            label="Capacidad"
-            type="number"
-            value={mesaForm.capacidad}
-            onChange={(e) => setMesaForm({ ...mesaForm, capacidad: e.target.value })}
-            placeholder="Número de asientos"
-          />
-          <div>
-            <label className="block text-sm font-medium text-silver mb-2">Tipo de Juego</label>
-            <select
-              value={mesaForm.tipo_juego}
-              onChange={(e) => setMesaForm({ ...mesaForm, tipo_juego: e.target.value })}
-              className="w-full px-4 py-2.5 bg-slate border border-graphite rounded-lg text-pearl focus:outline-none focus:border-gold"
-            >
-              <option value="NLHE">No-Limit Hold'em</option>
-              <option value="PLO">Pot-Limit Omaha</option>
-              <option value="MIXTO">Mixto</option>
-            </select>
-          </div>
+          {/* Selector modo — solo si hay mesas inactivas */}
+          {mesasInactivas.length > 0 && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setModoCrear('nueva'); setMesaExistenteSel(null); }}
+                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors
+                  ${modoCrear === 'nueva'
+                    ? 'bg-gold/20 border border-gold text-gold'
+                    : 'bg-slate border border-graphite text-silver hover:border-gold/50'
+                  }`}
+              >
+                Nueva mesa
+              </button>
+              <button
+                onClick={() => setModoCrear('existente')}
+                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors
+                  ${modoCrear === 'existente'
+                    ? 'bg-gold/20 border border-gold text-gold'
+                    : 'bg-slate border border-graphite text-silver hover:border-gold/50'
+                  }`}
+              >
+                Reactivar existente
+              </button>
+            </div>
+          )}
+
+          {/* ── Modo: reactivar existente ─── */}
+          {modoCrear === 'existente' && (
+            <div>
+              <label className="block text-sm font-medium text-silver mb-2">
+                Selecciona una mesa inactiva
+              </label>
+              <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                {mesasInactivas.map((m) => (
+                  <button
+                    key={m.id_mesa}
+                    onClick={() => setMesaExistenteSel(m)}
+                    className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors
+                      ${mesaExistenteSel?.id_mesa === m.id_mesa
+                        ? 'bg-gold/10 border-gold text-pearl'
+                        : 'bg-slate border-graphite text-silver hover:border-gold/50'
+                      }`}
+                  >
+                    <span className="font-semibold text-gold mr-2">#{m.numero_mesa}</span>
+                    <span>{m.nombre || 'Sin nombre'}</span>
+                    <span className="text-xs ml-2 opacity-60">{m.capacidad} asientos · {m.tipo_juego}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Modo: nueva mesa ─── */}
+          {modoCrear === 'nueva' && (
+            <>
+              <Input
+                label="Número de Mesa *"
+                type="number"
+                value={mesaForm.numero_mesa}
+                onChange={(e) => setMesaForm({ ...mesaForm, numero_mesa: e.target.value })}
+                placeholder="Ej: 1, 2, 3…"
+              />
+              <Input
+                label="Nombre (opcional)"
+                value={mesaForm.nombre}
+                onChange={(e) => setMesaForm({ ...mesaForm, nombre: e.target.value })}
+                placeholder="Ej: Mesa Principal, VIP…"
+              />
+              <Input
+                label="Capacidad"
+                type="number"
+                value={mesaForm.capacidad}
+                onChange={(e) => setMesaForm({ ...mesaForm, capacidad: e.target.value })}
+                placeholder="Número de asientos"
+              />
+              <div>
+                <label className="block text-sm font-medium text-silver mb-2">Tipo de Juego</label>
+                <select
+                  value={mesaForm.tipo_juego}
+                  onChange={(e) => setMesaForm({ ...mesaForm, tipo_juego: e.target.value })}
+                  className="w-full px-4 py-2.5 bg-slate border border-graphite rounded-lg text-pearl focus:outline-none focus:border-gold"
+                >
+                  <option value="NLHE">No-Limit Hold'em</option>
+                  <option value="PLO">Pot-Limit Omaha</option>
+                  <option value="MIXTO">Mixto</option>
+                </select>
+              </div>
+            </>
+          )}
         </div>
       </Modal>
 
-      {/* Modal Editar Mesa */}
+      {/* ── Modal Editar Mesa ───────────────────────────────────────────── */}
       <Modal
         isOpen={!!editarMesaModal}
         onClose={() => setEditarMesaModal(null)}
@@ -395,7 +562,7 @@ export default function MesasPage() {
             label="Nombre (opcional)"
             value={mesaForm.nombre}
             onChange={(e) => setMesaForm({ ...mesaForm, nombre: e.target.value })}
-            placeholder="Ej: Mesa Principal, VIP..."
+            placeholder="Ej: Mesa Principal, VIP…"
           />
           <Input
             label="Capacidad"
@@ -407,7 +574,7 @@ export default function MesasPage() {
         </div>
       </Modal>
 
-      {/* Modal Iniciar Sesión */}
+      {/* ── Modal Iniciar Sesión ────────────────────────────────────────── */}
       <Modal
         isOpen={!!iniciarSesionModal}
         onClose={() => setIniciarSesionModal(null)}
@@ -426,11 +593,11 @@ export default function MesasPage() {
           <Alert type="info">
             Se iniciará una sesión de juego en esta mesa. Asegúrate de que haya un turno activo.
           </Alert>
-          <Input 
-            label="Stakes" 
-            value={stakes} 
-            onChange={(e) => setStakes(e.target.value)} 
-            placeholder="Ej: 1/2, 2/5, 5/10" 
+          <Input
+            label="Stakes"
+            value={stakes}
+            onChange={(e) => setStakes(e.target.value)}
+            placeholder="Ej: 1/2, 2/5, 5/10"
           />
           <p className="text-sm text-silver">Una vez iniciada, podrás sentar jugadores y registrar rake.</p>
         </div>

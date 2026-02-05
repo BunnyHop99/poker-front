@@ -229,18 +229,33 @@ export const fichasService = {
 // ============================================================================
 
 export const mesaService = {
+  /** Todas las mesas (activas + inactivas) */
   async getAll() {
     const response = await api.get('/mesas');
     return response.data;
   },
 
+  /** Solo mesas inactivas disponibles para reactivar */
+  async getInactivas() {
+    const response = await api.get('/mesas/inactivas');
+    return response.data;
+  },
+
+  /** Crear nueva mesa (o reactivar si existe inactiva con ese número) */
   async crear(data: { numero_mesa: number; nombre?: string | null; capacidad?: number; tipo_juego?: string }) {
     const response = await api.post('/mesas', data);
     return response.data;
   },
 
+  /** Actualizar campos de una mesa (nombre, capacidad, activa…) */
   async actualizar(idMesa: number, data: { nombre?: string | null; capacidad?: number; activa?: boolean }) {
     const response = await api.put(`/mesas/${idMesa}`, data);
+    return response.data;
+  },
+
+  /** Eliminar mesa permanentemente */
+  async eliminar(idMesa: number) {
+    const response = await api.delete(`/mesas/${idMesa}`);
     return response.data;
   },
 
