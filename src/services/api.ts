@@ -249,6 +249,11 @@ export const mesaService = {
     return response.data;
   },
 
+  async getSesionDetalle(idSesion: number) {
+    const response = await api.get(`/mesas/sesiones/${idSesion}`);
+    return response.data;
+  },
+
   async iniciarSesion(idMesa: number, stakes?: string) {
     const response = await api.post('/mesas/sesiones/iniciar', { id_mesa: idMesa, stakes });
     return response.data;
@@ -256,6 +261,45 @@ export const mesaService = {
 
   async cerrarSesion(idSesion: number) {
     const response = await api.post(`/mesas/sesiones/${idSesion}/cerrar`);
+    return response.data;
+  },
+
+  async sentarJugador(idSesion: number, data: { id_jugador: number; asiento?: number; fichas: { id_ficha: number; cantidad: number }[]; metodo_pago: string }) {
+    const response = await api.post(`/mesas/sesiones/${idSesion}/sentar`, data);
+    return response.data;
+  },
+
+  async recompraJugador(idSesion: number, idJugadorSesion: number, data: { fichas: { id_ficha: number; cantidad: number }[]; metodo_pago: string }) {
+    const response = await api.post(`/mesas/sesiones/${idSesion}/jugador/${idJugadorSesion}/recompra`, data);
+    return response.data;
+  },
+
+  async cashoutJugador(idSesion: number, idJugadorSesion: number, data: { fichas: { id_ficha: number; cantidad: number }[]; metodo_cobro: string }) {
+    const response = await api.post(`/mesas/sesiones/${idSesion}/jugador/${idJugadorSesion}/cashout`, data);
+    return response.data;
+  },
+};
+
+export const fichasTurnoService = {
+  async getFichasActivo() {
+    const response = await api.get('/turnos/activo/fichas');
+    return response.data;
+  },
+};
+
+export const rakeService = {
+  async registrar(data: { id_sesion: number; id_dealer: number; fichas: { id_ficha: number; cantidad: number }[]; notas?: string }) {
+    const response = await api.post('/turnos/activo/rake', data);
+    return response.data;
+  },
+
+  async getRakes() {
+    const response = await api.get('/turnos/activo/rakes');
+    return response.data;
+  },
+
+  async getDealers() {
+    const response = await api.get('/turnos/activo/dealers');
     return response.data;
   },
 };
