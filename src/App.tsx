@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import {
   LoginPage, DashboardPage, MesasPage, JugadoresPage, FichasPage,
-  TurnoPage, PersonalPage
+  TurnoPage, PersonalPage, HistorialPage
 } from './pages';
 import { MainLayout } from './components/layout';
 import { useAuthStore } from './store/authStore';
@@ -25,6 +25,7 @@ function App() {
         <Route path="/mesas" element={<ProtectedRoute><MesasPage /></ProtectedRoute>} />
         <Route path="/jugadores" element={<ProtectedRoute><JugadoresPage /></ProtectedRoute>} />
         <Route path="/fichas" element={<ProtectedRoute><FichasPage /></ProtectedRoute>} />
+        <Route path="/historial" element={<ProtectedRoute><HistorialPage /></ProtectedRoute>} />
         <Route path="/personal" element={<ProtectedRoute><PersonalPage /></ProtectedRoute>} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

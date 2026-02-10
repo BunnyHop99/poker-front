@@ -292,14 +292,27 @@ export const rakeService = {
     const response = await api.post('/turnos/activo/rake', data);
     return response.data;
   },
-
   async getRakes() {
     const response = await api.get('/turnos/activo/rakes');
     return response.data;
   },
-
   async getDealers() {
     const response = await api.get('/turnos/activo/dealers');
+    return response.data;
+  },
+};
+
+export const historialService = {
+  async getTurnos(limit = 50, offset = 0) {
+    const response = await api.get('/turnos/historial', { params: { limit, offset } });
+    return response.data;
+  },
+  async getVentas(limit = 50, offset = 0, soloCreditos = false, soloPendientes = false) {
+    const response = await api.get('/turnos/ventas/historial', { params: { limit, offset, solo_creditos: soloCreditos, solo_pendientes: soloPendientes } });
+    return response.data;
+  },
+  async marcarPagado(idVenta: number) {
+    const response = await api.patch(`/turnos/ventas/${idVenta}/pagar`);
     return response.data;
   },
 };

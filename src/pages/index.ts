@@ -5,3 +5,4 @@ export { default as JugadoresPage } from './JugadoresPage';
 export { default as FichasPage } from './FichasPage';
 export { default as TurnoPage } from './TurnoPage';
 export { default as PersonalPage } from './PersonalPage';
+export { default as HistorialPage } from './HistorialPage';

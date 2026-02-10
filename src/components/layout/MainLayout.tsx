@@ -10,6 +10,7 @@ import {
   Coins,
   UserCog,
   Clock,
+  History,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
@@ -47,6 +48,12 @@ const menuItems: MenuItem[] = [
     icon: <Coins className="w-5 h-5" />,
     path: '/fichas',
     roles: ['GERENTE', 'CAJERO'],
+  },
+  {
+    label: 'Historial',
+    icon: <History className="w-5 h-5" />,
+    path: '/historial',
+    roles: ['GERENTE'],
   },
   {
     label: 'Personal',
