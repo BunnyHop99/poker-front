@@ -130,6 +130,24 @@ export const turnoService = {
     const response = await api.get(`/turnos/${idTurno}/estadisticas`);
     return response.data;
   },
+
+  async getHistorial(params: Record<string, string | number> = {}) {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => query.append(key, String(val)));
+    const response = await api.get(`/turnos/historial?${query.toString()}`);
+    return response.data;
+  },
+
+  async getTurno(id: number) {
+    const response = await api.get(`/turnos/${id}`);
+    return response.data;
+  },
+
+  async getTurnos(params: Record<string, string> = {}) {
+    const query = new URLSearchParams(params);
+    const response = await api.get(`/turnos/?${query.toString()}`);
+    return response.data;
+  },
 };
 
 // ============================================================================
@@ -337,5 +355,7 @@ export const historialService = {
     return response.data;
   },
 };
+
+
 
 export default api;
