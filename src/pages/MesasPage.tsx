@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Play, Square, Users, Clock, DollarSign, Plus, Edit, Trash2, Search, UserPlus, LogOut, Coins, Minus } from 'lucide-react';
+import { Play, Square, Users, Clock, DollarSign, Plus, Edit, Trash2, Search, UserPlus, LogOut, Coins, Minus, RefreshCw, User } from 'lucide-react';
 import { Button, Card, Badge, Modal, Input, Table, Alert } from '../components/ui';
-import { mesaService, jugadorService, fichasTurnoService } from '../services/api';
+import { mesaService, jugadorService, fichasTurnoService, rakeService } from '../services/api';
 import { useAuthStore } from '../store/authStore';
 
 interface Mesa { id_mesa: number; numero_mesa: number; nombre: string | null; capacidad: number; tipo_juego: string; activa: boolean; }
-interface SesionActiva { id_sesion: number; id_mesa: number; mesa_numero: number; mesa_nombre: string; stakes: string; hora_inicio: string; estado: string; jugadores_count: number; total_rake: number; }
+interface SesionActiva { id_sesion: number; id_mesa: number; mesa_numero: number; mesa_nombre: string; stakes: string; hora_inicio: string; estado: string; jugadores_count: number; total_rake: number; dealer_actual?: { id: number; nombre: string } | null; }
 interface JugadorEnSesion { id: number; id_jugador: number; nombre: string; apodo: string | null; asiento: number | null; hora_entrada: string; hora_salida: string | null; buy_in_total: number; cash_out: number | null; resultado: number | null; }
 interface SesionDetalle { id_sesion: number; id_mesa: number; mesa: { id_mesa: number; numero_mesa: number; nombre: string | null }; stakes: string; hora_inicio: string; estado: string; jugadores: JugadorEnSesion[]; jugadores_actuales: number; }
 interface JugadorBusqueda { id_jugador: number; nombre_completo: string; apodo: string | null; }
 interface FichaItem { id_ficha: number; denominacion: number; color: string | null; cantidad_caja: number; cantidad_circulacion: number; }
+interface DealerItem { id: number; nombre: string; apodo: string | null; }
+interface DealerHistorialItem { id: number; id_dealer: number; nombre: string; hora_inicio: string | null; hora_fin: string | null; duracion_minutos: number | null; orden: number; activo: boolean; }
 
 export default function MesasPage() {
   const { isGerente } = useAuthStore();
@@ -38,6 +40,14 @@ export default function MesasPage() {
   const [cashoutMetodo, setCashoutMetodo] = useState('EFECTIVO');
   const [recompraModal, setRecompraModal] = useState<{ sesion: number; jugadorSesion: JugadorEnSesion } | null>(null);
   const [recompraMetodo, setRecompraMetodo] = useState('EFECTIVO');
+  // Dealer state
+  const [dealerModal, setDealerModal] = useState<SesionActiva | null>(null);
+  const [dealersDisponibles, setDealersDisponibles] = useState<DealerItem[]>([]);
+  const [dealerSeleccionado, setDealerSeleccionado] = useState<number | null>(null);
+  const [loadingDealers, setLoadingDealers] = useState(false);
+  const [dealerHistorialModal, setDealerHistorialModal] = useState<{ id_sesion: number; mesa_numero: number } | null>(null);
+  const [dealerHistorial, setDealerHistorial] = useState<{ dealer_actual: DealerHistorialItem | null; historial: DealerHistorialItem[]; total_dealers: number } | null>(null);
+  const [loadingHistorial, setLoadingHistorial] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -97,6 +107,39 @@ export default function MesasPage() {
   const openSentarModal = (idSesion: number) => { setSentarModal(idSesion); loadFichas(); };
   const openCashoutModal = (sesion: number, js: JugadorEnSesion) => { setCashoutModal({ sesion, jugadorSesion: js }); loadFichas(); };
   const openRecompraModal = (sesion: number, js: JugadorEnSesion) => { setRecompraModal({ sesion, jugadorSesion: js }); loadFichas(); };
+
+  // ---- DEALER FUNCTIONS ----
+  const openDealerModal = async (sesion: SesionActiva) => {
+    setDealerModal(sesion);
+    setDealerSeleccionado(sesion.dealer_actual?.id || null);
+    setLoadingDealers(true);
+    try {
+      const dl = await rakeService.getDealers();
+      setDealersDisponibles(dl || []);
+    } catch (err) { console.error(err); }
+    finally { setLoadingDealers(false); }
+  };
+
+  const handleAsignarDealer = async () => {
+    if (!dealerModal || !dealerSeleccionado) return;
+    setProcesando(true);
+    try {
+      await mesaService.asignarDealer(dealerModal.id_sesion, dealerSeleccionado);
+      setDealerModal(null); setDealerSeleccionado(null);
+      await fetchData();
+    } catch (err: any) { alert(err.response?.data?.detail || 'Error al asignar dealer'); }
+    finally { setProcesando(false); }
+  };
+
+  const openDealerHistorial = async (idSesion: number, mesaNumero: number) => {
+    setDealerHistorialModal({ id_sesion: idSesion, mesa_numero: mesaNumero });
+    setLoadingHistorial(true);
+    try {
+      const data = await mesaService.getDealersSesion(idSesion);
+      setDealerHistorial(data);
+    } catch (err) { console.error(err); }
+    finally { setLoadingHistorial(false); }
+  };
 
   const handleSentarJugador = async () => {
     if (!sentarModal || !jugadorSeleccionado) return;
@@ -189,6 +232,8 @@ export default function MesasPage() {
         </div>
       </div>
       {error && <Alert type="error">{error}</Alert>}
+
+      {/* SESIONES ACTIVAS */}
       {sesionesActivas.length > 0 && (<>
         <h2 className="text-lg font-semibold text-pearl">Mesas en Juego</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -206,6 +251,24 @@ export default function MesasPage() {
                   <div className="flex items-center gap-2 text-pearl"><DollarSign className="w-4 h-4 text-silver" />Stakes: {sesion.stakes}</div>
                   <div className="flex items-center gap-2 text-gold font-medium"><DollarSign className="w-4 h-4" />Rake: {fmt(sesion.total_rake)}</div>
                 </div>
+                {/* DEALER ACTUAL */}
+                <div className="mb-4 p-3 bg-slate rounded-lg border border-graphite">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4 text-emerald" />
+                      <span className="text-sm text-silver">Dealer:</span>
+                      {sesion.dealer_actual ? (
+                        <span className="text-sm font-medium text-pearl">{sesion.dealer_actual.nombre}</span>
+                      ) : (
+                        <span className="text-sm text-amber italic">Sin asignar</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => openDealerHistorial(sesion.id_sesion, sesion.mesa_numero)} className="px-2 py-1 text-xs rounded bg-graphite hover:bg-silver/20 text-silver hover:text-pearl transition-colors">Historial</button>
+                      <button onClick={() => openDealerModal(sesion)} className="px-2 py-1 text-xs rounded bg-emerald/20 hover:bg-emerald/30 text-emerald transition-colors">{sesion.dealer_actual ? 'Cambiar' : 'Asignar'}</button>
+                    </div>
+                  </div>
+                </div>
                 <div className="flex gap-2">
                   <Button variant="secondary" size="sm" className="flex-1" onClick={() => fetchSesionDetalle(sesion.id_sesion)}><Users className="w-4 h-4" />Ver Jugadores</Button>
                   <Button size="sm" onClick={() => openSentarModal(sesion.id_sesion)}><UserPlus className="w-4 h-4" />Sentar</Button>
@@ -216,6 +279,8 @@ export default function MesasPage() {
           ))}
         </div>
       </>)}
+
+      {/* DETALLE SESIÓN */}
       {sesionDetalle && (
         <Card title={`Mesa ${sesionDetalle.mesa.numero_mesa} - Jugadores`} action={<div className="flex gap-2"><Button size="sm" onClick={() => openSentarModal(sesionDetalle.id_sesion)}><UserPlus className="w-4 h-4" />Sentar</Button><Button variant="ghost" size="sm" onClick={() => setSesionDetalle(null)}>Cerrar</Button></div>}>
           {loadingDetalle ? <div className="flex justify-center py-8"><div className="w-8 h-8 border-4 border-gold/30 border-t-gold rounded-full animate-spin" /></div>
@@ -231,6 +296,8 @@ export default function MesasPage() {
           ))}</div>}
         </Card>
       )}
+
+      {/* TABLA DE MESAS */}
       <Card title="Configuración de Mesas" noPadding>
         {mesas.length === 0 ? <div className="p-8 text-center"><p className="text-silver mb-4">No hay mesas configuradas</p>{isGerente() && <Button onClick={() => { resetMesaForm(); setCrearMesaModal(true); }}><Plus className="w-4 h-4" />Crear Primera Mesa</Button>}</div>
         : <Table columns={[
@@ -243,6 +310,7 @@ export default function MesasPage() {
           ]} data={mesas} keyExtractor={(m) => m.id_mesa} />}
       </Card>
 
+      {/* MODAL: Crear Mesa */}
       <Modal isOpen={crearMesaModal} onClose={() => setCrearMesaModal(false)} title="Nueva Mesa" footer={<><Button variant="ghost" onClick={() => setCrearMesaModal(false)}>Cancelar</Button><Button onClick={handleCrearMesa} isLoading={procesando}>Crear</Button></>}>
         <div className="space-y-4">
           <Input label="Número *" type="number" value={mesaForm.numero_mesa} onChange={(e) => setMesaForm({ ...mesaForm, numero_mesa: e.target.value })} />
@@ -250,14 +318,83 @@ export default function MesasPage() {
           <Input label="Capacidad" type="number" value={mesaForm.capacidad} onChange={(e) => setMesaForm({ ...mesaForm, capacidad: e.target.value })} />
         </div>
       </Modal>
+
+      {/* MODAL: Editar Mesa */}
       <Modal isOpen={!!editarMesaModal} onClose={() => setEditarMesaModal(null)} title={`Editar Mesa ${editarMesaModal?.numero_mesa}`} footer={<><Button variant="ghost" onClick={() => setEditarMesaModal(null)}>Cancelar</Button><Button onClick={handleEditarMesa} isLoading={procesando}>Guardar</Button></>}>
         <div className="space-y-4"><Input label="Nombre" value={mesaForm.nombre} onChange={(e) => setMesaForm({ ...mesaForm, nombre: e.target.value })} /><Input label="Capacidad" type="number" value={mesaForm.capacidad} onChange={(e) => setMesaForm({ ...mesaForm, capacidad: e.target.value })} /></div>
       </Modal>
+
+      {/* MODAL: Iniciar Sesión */}
       <Modal isOpen={!!iniciarSesionModal} onClose={() => setIniciarSesionModal(null)} title={`Iniciar - Mesa ${iniciarSesionModal?.numero_mesa}`} footer={<><Button variant="ghost" onClick={() => setIniciarSesionModal(null)}>Cancelar</Button><Button onClick={handleIniciarSesion} isLoading={procesando}><Play className="w-4 h-4" />Iniciar</Button></>}>
-        <div className="space-y-4"><Alert type="info">Se iniciará sesión de juego.</Alert><Input label="Stakes" value={stakes} onChange={(e) => setStakes(e.target.value)} placeholder="1/2, 2/5, 5/10" /></div>
+        <div className="space-y-4"><Alert type="info">Se iniciará sesión de juego. Asigna un dealer después de iniciar.</Alert><Input label="Stakes" value={stakes} onChange={(e) => setStakes(e.target.value)} placeholder="1/2, 2/5, 5/10" /></div>
       </Modal>
 
-      {/* Sentar Jugador - Buy In con denominaciones */}
+      {/* MODAL: Asignar/Cambiar Dealer */}
+      <Modal isOpen={!!dealerModal} onClose={() => setDealerModal(null)} title={`Dealer - Mesa ${dealerModal?.mesa_numero}`} footer={<><Button variant="ghost" onClick={() => setDealerModal(null)}>Cancelar</Button><Button onClick={handleAsignarDealer} isLoading={procesando} disabled={!dealerSeleccionado}><User className="w-4 h-4" />Asignar Dealer</Button></>}>
+        <div className="space-y-4">
+          {dealerModal?.dealer_actual && (
+            <div className="p-3 bg-emerald/10 border border-emerald/30 rounded-lg">
+              <p className="text-xs text-silver">Dealer actual</p>
+              <p className="font-bold text-pearl">{dealerModal.dealer_actual.nombre}</p>
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-silver mb-2">Seleccionar dealer *</label>
+            {loadingDealers ? <div className="flex justify-center py-6"><div className="w-8 h-8 border-4 border-gold/30 border-t-gold rounded-full animate-spin" /></div>
+            : dealersDisponibles.length === 0 ? <Alert type="warning">No hay dealers registrados.</Alert>
+            : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{dealersDisponibles.map((d) => (
+                <button key={d.id} onClick={() => setDealerSeleccionado(d.id)} className={`p-3 rounded-lg border-2 text-left transition-all ${dealerSeleccionado === d.id ? 'border-emerald bg-emerald/10 text-pearl' : 'border-graphite bg-slate text-silver hover:border-silver'}`}>
+                  <p className="font-medium">{d.apodo || d.nombre}</p>
+                  {dealerSeleccionado === d.id && <User className="w-4 h-4 text-emerald mt-1" />}
+                  {dealerModal?.dealer_actual?.id === d.id && <span className="text-xs text-emerald">(actual)</span>}
+                </button>
+              ))}</div>
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      {/* MODAL: Historial de Dealers */}
+      <Modal isOpen={!!dealerHistorialModal} onClose={() => { setDealerHistorialModal(null); setDealerHistorial(null); }} title={`Historial Dealers - Mesa ${dealerHistorialModal?.mesa_numero}`}>
+        {loadingHistorial ? <div className="flex justify-center py-8"><div className="w-8 h-8 border-4 border-gold/30 border-t-gold rounded-full animate-spin" /></div>
+        : !dealerHistorial || dealerHistorial.historial.length === 0 ? <p className="text-silver text-center py-6">No hay dealers registrados en esta sesión.</p>
+        : (
+          <div className="space-y-3">
+            {dealerHistorial.dealer_actual && (
+              <div className="p-3 bg-emerald/10 border border-emerald/30 rounded-lg flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-emerald/20 flex items-center justify-center"><User className="w-4 h-4 text-emerald" /></div>
+                <div>
+                  <p className="text-xs text-emerald">Dealer Actual</p>
+                  <p className="font-bold text-pearl">{dealerHistorial.dealer_actual.nombre}</p>
+                  <p className="text-xs text-silver">Desde: {dealerHistorial.dealer_actual.hora_inicio ? fmtTime(dealerHistorial.dealer_actual.hora_inicio) : '--:--'}</p>
+                </div>
+              </div>
+            )}
+            <p className="text-sm text-silver font-medium">Historial ({dealerHistorial.total_dealers} dealers)</p>
+            <div className="space-y-2 max-h-[40vh] overflow-y-auto">
+              {dealerHistorial.historial.map((d) => (
+                <div key={d.id} className={`flex items-center justify-between p-3 rounded-lg border ${d.activo ? 'bg-emerald/5 border-emerald/30' : 'bg-slate border-graphite'}`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${d.activo ? 'bg-emerald/20 text-emerald' : 'bg-graphite text-silver'}`}>{d.orden}</div>
+                    <div>
+                      <p className="font-medium text-pearl">{d.nombre}</p>
+                      <p className="text-xs text-silver">
+                        {d.hora_inicio ? fmtTime(d.hora_inicio) : '--:--'}
+                        {d.hora_fin ? ` → ${fmtTime(d.hora_fin)}` : ' → en curso'}
+                        {d.duracion_minutos !== null && <span className="text-amber ml-2">({d.duracion_minutos} min)</span>}
+                      </p>
+                    </div>
+                  </div>
+                  {d.activo && <Badge variant="success">Activo</Badge>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* MODAL: Sentar Jugador */}
       <Modal isOpen={!!sentarModal} onClose={() => { setSentarModal(null); setJugadorSeleccionado(null); setJugadoresEncontrados([]); setBusquedaJugador(''); setAsiento(''); }} title="Buy In - Sentar Jugador" size="lg" footer={<><Button variant="ghost" onClick={() => setSentarModal(null)}>Cancelar</Button><Button onClick={handleSentarJugador} isLoading={procesando} disabled={!jugadorSeleccionado || calcTotalSeleccion() <= 0}><UserPlus className="w-4 h-4" />Sentar ({fmt(calcTotalSeleccion())})</Button></>}>
         <div className="space-y-4">
           <div><label className="block text-sm font-medium text-silver mb-2">Buscar Jugador</label><div className="flex gap-2"><div className="flex-1 relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-silver" /><input type="text" placeholder="Nombre o apodo..." value={busquedaJugador} onChange={(e) => setBusquedaJugador(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && buscarJugador()} className="w-full pl-10 pr-4 py-2.5 bg-slate border border-graphite rounded-lg text-pearl placeholder:text-silver/60 focus:outline-none focus:border-gold" /></div><Button onClick={buscarJugador}>Buscar</Button></div></div>
@@ -270,7 +407,7 @@ export default function MesasPage() {
         </div>
       </Modal>
 
-      {/* Cashout con denominaciones */}
+      {/* MODAL: Cashout */}
       <Modal isOpen={!!cashoutModal} onClose={() => setCashoutModal(null)} title={`Cash Out - ${cashoutModal?.jugadorSesion.apodo || cashoutModal?.jugadorSesion.nombre}`} size="lg" footer={<><Button variant="ghost" onClick={() => setCashoutModal(null)}>Cancelar</Button><Button variant="danger" onClick={handleCashout} isLoading={procesando} disabled={calcTotalSeleccion() <= 0}><LogOut className="w-4 h-4" />Cash Out ({fmt(calcTotalSeleccion())})</Button></>}>
         <div className="space-y-4">
           {cashoutModal && <div className="p-4 bg-slate rounded-lg"><div className="flex justify-between text-sm"><span className="text-silver">Buy-in total:</span><span className="text-pearl font-medium">{fmt(cashoutModal.jugadorSesion.buy_in_total)}</span></div></div>}
@@ -280,7 +417,7 @@ export default function MesasPage() {
         </div>
       </Modal>
 
-      {/* Recompra con denominaciones */}
+      {/* MODAL: Recompra */}
       <Modal isOpen={!!recompraModal} onClose={() => setRecompraModal(null)} title={`Recompra - ${recompraModal?.jugadorSesion.apodo || recompraModal?.jugadorSesion.nombre}`} size="lg" footer={<><Button variant="ghost" onClick={() => setRecompraModal(null)}>Cancelar</Button><Button onClick={handleRecompra} isLoading={procesando} disabled={calcTotalSeleccion() <= 0}><Plus className="w-4 h-4" />Recompra ({fmt(calcTotalSeleccion())})</Button></>}>
         <div className="space-y-4">
           {recompraModal && <div className="p-4 bg-slate rounded-lg"><div className="flex justify-between text-sm"><span className="text-silver">Buy-in actual:</span><span className="text-pearl font-medium">{fmt(recompraModal.jugadorSesion.buy_in_total)}</span></div></div>}

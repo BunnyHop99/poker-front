@@ -18,7 +18,6 @@ const api: AxiosInstance = axios.create({
 // INTERCEPTORES
 // ============================================================================
 
-// Request interceptor - añade token
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const token = localStorage.getItem('access_token');
@@ -30,13 +29,11 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor - maneja errores y refresh token
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-    // Si es 401 y no es retry, intentar refresh
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
@@ -57,7 +54,6 @@ api.interceptors.response.use(
           return api(originalRequest);
         }
       } catch (refreshError) {
-        // Refresh falló, limpiar y redirigir a login
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
         window.location.href = '/login';
@@ -146,11 +142,6 @@ export const dashboardService = {
     return response.data;
   },
 
-  async getTurno() {
-    const response = await api.get('/dashboard/turno');
-    return response.data;
-  },
-
   async getFichas() {
     const response = await api.get('/dashboard/fichas');
     return response.data;
@@ -163,6 +154,24 @@ export const dashboardService = {
 
   async getCreditos() {
     const response = await api.get('/dashboard/creditos');
+    return response.data;
+  },
+
+  getHistorial: async (params: Record<string, string | number> = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => query.append(key, String(val)));
+    const response = await api.get(`/turnos/historial?${query.toString()}`);
+    return response.data;
+  },
+
+  getTurno: async (id: number) => {
+    const response = await api.get(`/turnos/${id}`);
+    return response.data;
+  },
+
+  getTurnos: async (params: Record<string, string> = {}) => {
+    const query = new URLSearchParams(params);
+    const response = await api.get(`/turnos/?${query.toString()}`);
     return response.data;
   },
 };
@@ -276,6 +285,18 @@ export const mesaService = {
 
   async cashoutJugador(idSesion: number, idJugadorSesion: number, data: { fichas: { id_ficha: number; cantidad: number }[]; metodo_cobro: string }) {
     const response = await api.post(`/mesas/sesiones/${idSesion}/jugador/${idJugadorSesion}/cashout`, data);
+    return response.data;
+  },
+
+  // ---- DEALER ENDPOINTS ----
+
+  async asignarDealer(idSesion: number, idDealer: number) {
+    const response = await api.post(`/mesas/sesiones/${idSesion}/dealer`, { id_dealer: idDealer });
+    return response.data;
+  },
+
+  async getDealersSesion(idSesion: number) {
+    const response = await api.get(`/mesas/sesiones/${idSesion}/dealers`);
     return response.data;
   },
 };

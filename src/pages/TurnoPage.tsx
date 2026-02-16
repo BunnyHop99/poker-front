@@ -28,13 +28,11 @@ export default function TurnoPage() {
   const [abrirModal, setAbrirModal] = useState(false);
   const [previewData, setPreviewData] = useState<PreviewApertura | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
-  const [selectedDealers, setSelectedDealers] = useState<number[]>([]);
   const [selectedCajeros, setSelectedCajeros] = useState<number[]>([]);
   const [fichasACaja, setFichasACaja] = useState<Record<number, number>>({});
   const [notas, setNotas] = useState('');
   const [procesando, setProcesando] = useState(false);
   const [cerrarModal, setCerrarModal] = useState(false);
-  // Rake state
   const [rakes, setRakes] = useState<RakeItem[]>([]);
   const [rakesTotal, setRakesTotal] = useState(0);
   const [loadingRakes, setLoadingRakes] = useState(false);
@@ -45,7 +43,6 @@ export default function TurnoPage() {
   const [rakeForm, setRakeForm] = useState({ id_sesion: 0, id_dealer: 0, notas: '' });
   const [rakeFichasDisponibles, setRakeFichasDisponibles] = useState<FichaItem[]>([]);
   const [rakeFichasSeleccion, setRakeFichasSeleccion] = useState<Record<number, number>>({});
-  const [loadingRakeFichas, setLoadingRakeFichas] = useState(false);
 
   const fetchTurno = async () => { try { setError(null); const r = await api.get('/turnos/activo'); setTurnoActivo(r.data); } catch (err: any) { setTurnoActivo({ hay_turno_activo: false }); } finally { setLoading(false); } };
   const fetchFichasTurno = useCallback(async () => { if (!turnoActivo?.hay_turno_activo) return; setLoadingFichas(true); try { setFichasTurno(await fichasTurnoService.getFichasActivo()); } catch (e) { console.error(e); } finally { setLoadingFichas(false); } }, [turnoActivo?.hay_turno_activo]);
@@ -56,7 +53,15 @@ export default function TurnoPage() {
 
   const fetchPreviewApertura = async () => { setLoadingPreview(true); try { const r = await api.get('/turnos/preview-apertura'); setPreviewData(r.data); const init: Record<number, number> = {}; r.data.fichas.detalle.forEach((f: FichaItem) => { init[f.id_ficha] = 0; }); setFichasACaja(init); setAbrirModal(true); } catch (err: any) { alert(err.response?.data?.detail || 'Error'); } finally { setLoadingPreview(false); } };
 
-  const handleAbrirTurno = async () => { setProcesando(true); try { const fa = Object.entries(fichasACaja).filter(([_, c]) => c > 0).map(([id, cantidad]) => ({ id_ficha: Number(id), cantidad })); await api.post('/turnos/abrir', { notas: notas || null, dealers_ids: selectedDealers, cajeros_ids: selectedCajeros, fichas_a_caja: fa }); setAbrirModal(false); setNotas(''); setSelectedDealers([]); setSelectedCajeros([]); setFichasACaja({}); await fetchTurno(); } catch (err: any) { alert(err.response?.data?.detail || 'Error'); } finally { setProcesando(false); } };
+  const handleAbrirTurno = async () => {
+    setProcesando(true);
+    try {
+      const fa = Object.entries(fichasACaja).filter(([_, c]) => c > 0).map(([id, cantidad]) => ({ id_ficha: Number(id), cantidad }));
+      await api.post('/turnos/abrir', { notas: notas || null, cajeros_ids: selectedCajeros, fichas_a_caja: fa });
+      setAbrirModal(false); setNotas(''); setSelectedCajeros([]); setFichasACaja({});
+      await fetchTurno();
+    } catch (err: any) { alert(err.response?.data?.detail || 'Error'); } finally { setProcesando(false); }
+  };
 
   const handleCerrarTurno = async () => { if (!turnoActivo?.turno) return; setProcesando(true); try { await api.post(`/turnos/${turnoActivo.turno.id_turno}/cerrar`); setCerrarModal(false); await fetchTurno(); } catch (err: any) { alert(err.response?.data?.detail || 'Error al cerrar turno'); } finally { setProcesando(false); } };
 
@@ -87,7 +92,6 @@ export default function TurnoPage() {
     } catch (err: any) { alert(err.response?.data?.detail || 'Error al registrar rake'); } finally { setProcesando(false); }
   };
 
-  const toggleDealer = (id: number) => setSelectedDealers(p => p.includes(id) ? p.filter(d => d !== id) : [...p, id]);
   const toggleCajero = (id: number) => setSelectedCajeros(p => p.includes(id) ? p.filter(c => c !== id) : [...p, id]);
   const updateFichaCantidad = (idFicha: number, delta: number, max: number) => setFichasACaja(p => ({ ...p, [idFicha]: Math.max(0, Math.min(max, (p[idFicha] || 0) + delta)) }));
   const setFichaCantidadVal = (idFicha: number, v: number, max: number) => setFichasACaja(p => ({ ...p, [idFicha]: Math.max(0, Math.min(max, v || 0)) }));
@@ -123,7 +127,7 @@ export default function TurnoPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div><h1 className="text-2xl font-bold text-pearl">Gesti&#243;n de Turno</h1><p className="text-silver">Control de apertura y cierre de operaciones</p></div>
+        <div><h1 className="text-2xl font-bold text-pearl">Gestión de Turno</h1><p className="text-silver">Control de apertura y cierre de operaciones</p></div>
         {isGerente() && (hayTurno
           ? <Button variant="danger" onClick={() => setCerrarModal(true)}><Square className="w-4 h-4" />Cerrar Turno</Button>
           : <Button onClick={fetchPreviewApertura} isLoading={loadingPreview}><Play className="w-4 h-4" />Abrir Turno</Button>
@@ -134,11 +138,10 @@ export default function TurnoPage() {
       {!hayTurno ? (
         <Card className="text-center py-12"><div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gold/10 flex items-center justify-center"><Clock className="w-10 h-10 text-gold" /></div><h2 className="text-xl font-bold text-pearl mb-2">No hay turno activo</h2><p className="text-silver">{isGerente() ? 'Usa "Abrir Turno" para comenzar.' : 'Contacta al gerente.'}</p></Card>
       ) : turno && (<>
-        {/* Info turno */}
         <Card>
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-4"><div className="w-14 h-14 rounded-full bg-gradient-to-br from-gold to-gold-dark flex items-center justify-center"><Clock className="w-7 h-7 text-midnight" /></div><div><h2 className="text-xl font-bold text-pearl">Turno #{turno.id_turno}</h2><p className="text-silver">{fmtDate(turno.fecha)}</p></div></div>
-            <Badge variant="success" className="text-lg px-4 py-2"><span className="w-3 h-3 bg-emerald rounded-full mr-2 animate-pulse" />EN OPERACI&#211;N</Badge>
+            <Badge variant="success" className="text-lg px-4 py-2"><span className="w-3 h-3 bg-emerald rounded-full mr-2 animate-pulse" />EN OPERACIÓN</Badge>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
             <div className="text-center p-4 bg-slate rounded-lg"><p className="text-sm text-silver mb-1">Inicio</p><p className="text-2xl font-bold text-pearl">{fmtTime(turno.hora_inicio)}</p></div>
@@ -150,28 +153,26 @@ export default function TurnoPage() {
         {/* RAKE MODULE */}
         <Card>
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-gold/20 flex items-center justify-center"><TrendingUp className="w-5 h-5 text-gold" /></div><div><h3 className="text-lg font-semibold text-pearl">Rake del Turno</h3><p className="text-sm text-silver">Cada dealer registra entrega &#x2014; circulaci&#243;n &#x2192; b&#243;veda</p></div></div>
+            <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-gold/20 flex items-center justify-center"><TrendingUp className="w-5 h-5 text-gold" /></div><div><h3 className="text-lg font-semibold text-pearl">Rake del Turno</h3><p className="text-sm text-silver">Cada dealer registra entrega — circulación → bóveda</p></div></div>
             <div className="flex items-center gap-3">
               <p className="text-2xl font-bold text-gold">{fmt(rakesTotal)}</p>
               <button onClick={fetchRakes} className="p-2 rounded-lg hover:bg-white/5 text-silver hover:text-pearl" disabled={loadingRakes}><RefreshCw className={`w-4 h-4 ${loadingRakes ? 'animate-spin' : ''}`} /></button>
               <Button size="sm" onClick={openRakeModal}><Plus className="w-4 h-4" />Registrar Rake</Button>
             </div>
           </div>
-          {/* Por dealer summary */}
           {rakes.length > 0 && (() => { const pd: Record<string, { nombre: string; total: number; count: number }> = {}; rakes.forEach(r => { if (!pd[r.id_dealer]) pd[r.id_dealer] = { nombre: r.dealer, total: 0, count: 0 }; pd[r.id_dealer].total += r.monto; pd[r.id_dealer].count += 1; }); return (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-4">{Object.values(pd).map((d, i) => (<div key={i} className="p-3 bg-slate rounded-lg border border-graphite"><p className="text-sm font-medium text-pearl">{d.nombre}</p><p className="text-lg font-bold text-gold">{fmt(d.total)}</p><p className="text-xs text-silver">{d.count} entrega{d.count !== 1 ? 's' : ''}</p></div>))}</div>
           ); })()}
-          {/* History toggle */}
           <div className="flex items-center justify-between mb-2"><p className="text-sm text-silver font-medium">Historial ({rakes.length})</p><button onClick={() => setShowRakeHistory(!showRakeHistory)} className="p-1 rounded hover:bg-white/5 text-silver">{showRakeHistory ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}</button></div>
           {showRakeHistory && (rakes.length === 0
-            ? <div className="text-center py-6 text-silver"><ArrowDownToLine className="w-8 h-8 mx-auto mb-2 opacity-40" /><p>No hay rakes registrados a&#250;n.</p></div>
+            ? <div className="text-center py-6 text-silver"><ArrowDownToLine className="w-8 h-8 mx-auto mb-2 opacity-40" /><p>No hay rakes registrados aún.</p></div>
             : <div className="space-y-2 max-h-[40vh] overflow-y-auto">{rakes.map((r) => (
                 <div key={r.id_rake} className="flex items-center justify-between p-3 bg-slate rounded-lg border border-graphite hover:border-gold/20 transition-colors">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-full bg-gold/15 flex items-center justify-center"><DollarSign className="w-4 h-4 text-gold" /></div>
                     <div>
                       <div className="flex items-center gap-2"><p className="font-medium text-pearl">{fmt(r.monto)}</p>{r.mesa && <Badge variant="default" className="text-xs">Mesa {r.mesa}</Badge>}</div>
-                      <p className="text-xs text-silver">Dealer: <span className="text-pearl">{r.dealer}</span> &#x2014; {fmtHora(r.hora)}{r.notas ? ` &#x2014; ${r.notas}` : ''}</p>
+                      <p className="text-xs text-silver">Dealer: <span className="text-pearl">{r.dealer}</span> — {fmtHora(r.hora)}{r.notas ? ` — ${r.notas}` : ''}</p>
                     </div>
                   </div>
                   <p className="text-xs text-gold font-medium">#{r.id_rake}</p>
@@ -192,7 +193,7 @@ export default function TurnoPage() {
         {/* FICHAS EN CIRCULACION */}
         <Card>
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-amber/20 flex items-center justify-center"><Users className="w-5 h-5 text-amber" /></div><div><h3 className="text-lg font-semibold text-pearl">Fichas en Circulaci&#243;n</h3><p className="text-sm text-silver">En manos de jugadores</p></div></div>
+            <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-amber/20 flex items-center justify-center"><Users className="w-5 h-5 text-amber" /></div><div><h3 className="text-lg font-semibold text-pearl">Fichas en Circulación</h3><p className="text-sm text-silver">En manos de jugadores</p></div></div>
             <div className="flex items-center gap-3"><p className="text-2xl font-bold text-amber">{fmt(fichasTurno?.valor_circulacion || 0)}</p><button onClick={() => setShowCirculacionDetail(!showCirculacionDetail)} className="p-2 rounded-lg hover:bg-white/5 text-silver">{showCirculacionDetail ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}</button></div>
           </div>
           {showCirculacionDetail && <FichaGrid fichas={fichasCirculacion} campo="cantidad_circulacion" />}
@@ -201,7 +202,7 @@ export default function TurnoPage() {
         {/* FICHAS EN BOVEDA */}
         <Card>
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-sapphire/20 flex items-center justify-center"><Briefcase className="w-5 h-5 text-sapphire" /></div><div><h3 className="text-lg font-semibold text-pearl">Fichas en B&#243;veda</h3><p className="text-sm text-silver">Reserva + ganancias (rake)</p></div></div>
+            <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-sapphire/20 flex items-center justify-center"><Briefcase className="w-5 h-5 text-sapphire" /></div><div><h3 className="text-lg font-semibold text-pearl">Fichas en Bóveda</h3><p className="text-sm text-silver">Reserva + ganancias (rake)</p></div></div>
             <div className="flex items-center gap-3"><p className="text-2xl font-bold text-sapphire">{fmt(fichasTurno?.valor_boveda || 0)}</p><button onClick={() => setShowBovedaDetail(!showBovedaDetail)} className="p-2 rounded-lg hover:bg-white/5 text-silver">{showBovedaDetail ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}</button></div>
           </div>
           {showBovedaDetail && <FichaGrid fichas={fichasBoveda} campo="cantidad_boveda" />}
@@ -210,8 +211,8 @@ export default function TurnoPage() {
         {/* Resumen fichas */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div className="p-4 bg-charcoal border border-graphite rounded-xl text-center"><p className="text-xs text-silver mb-1">Caja</p><p className="text-lg font-bold text-emerald">{fmt(fichasTurno?.valor_caja || 0)}</p></div>
-          <div className="p-4 bg-charcoal border border-graphite rounded-xl text-center"><p className="text-xs text-silver mb-1">Circulaci&#243;n</p><p className="text-lg font-bold text-amber">{fmt(fichasTurno?.valor_circulacion || 0)}</p></div>
-          <div className="p-4 bg-charcoal border border-graphite rounded-xl text-center"><p className="text-xs text-silver mb-1">B&#243;veda</p><p className="text-lg font-bold text-sapphire">{fmt(fichasTurno?.valor_boveda || 0)}</p></div>
+          <div className="p-4 bg-charcoal border border-graphite rounded-xl text-center"><p className="text-xs text-silver mb-1">Circulación</p><p className="text-lg font-bold text-amber">{fmt(fichasTurno?.valor_circulacion || 0)}</p></div>
+          <div className="p-4 bg-charcoal border border-graphite rounded-xl text-center"><p className="text-xs text-silver mb-1">Bóveda</p><p className="text-lg font-bold text-sapphire">{fmt(fichasTurno?.valor_boveda || 0)}</p></div>
           <div className="p-4 bg-charcoal border border-gold/30 rounded-xl text-center"><p className="text-xs text-silver mb-1">Total</p><p className="text-lg font-bold text-gold">{fmt(fichasTurno?.valor_total || 0)}</p></div>
         </div>
 
@@ -228,7 +229,7 @@ export default function TurnoPage() {
         <Card title="Resumen Financiero del Turno">
           <div className="space-y-3">
             <div className="flex justify-between py-3 border-b border-graphite"><span className="text-silver">Rake Recolectado</span><span className="text-gold font-medium">{fmt(turno.total_rake)}</span></div>
-            <div className="flex justify-between py-3 border-b border-graphite"><span className="text-silver">Comisi&#243;n Propinas (10%)</span><span className="text-amber font-medium">{fmt((turno.total_propinas || 0) * 0.1)}</span></div>
+            <div className="flex justify-between py-3 border-b border-graphite"><span className="text-silver">Comisión Propinas (10%)</span><span className="text-amber font-medium">{fmt((turno.total_propinas || 0) * 0.1)}</span></div>
             <div className="flex justify-between py-3 border-b border-graphite"><span className="text-silver">Gastos Operativos</span><span className="text-ruby font-medium">-{fmt(turno.total_gastos)}</span></div>
             <div className="flex justify-between py-4 text-lg bg-slate/50 rounded-lg px-4 -mx-4"><span className="text-pearl font-bold">Ganancia Estimada</span><span className="text-gold font-bold">{fmt((turno.total_rake || 0) + (turno.total_propinas || 0) * 0.1 - (turno.total_gastos || 0))}</span></div>
           </div>
@@ -238,7 +239,7 @@ export default function TurnoPage() {
       {/* MODAL: Registrar Rake */}
       <Modal isOpen={rakeModal} onClose={() => setRakeModal(false)} title="Registrar Entrega de Rake" size="lg" footer={<><Button variant="ghost" onClick={() => setRakeModal(false)}>Cancelar</Button><Button onClick={handleRegistrarRake} isLoading={procesando} disabled={!rakeForm.id_sesion || !rakeForm.id_dealer || rakeCalcTotal() <= 0}><TrendingUp className="w-4 h-4" />Registrar ({fmt(rakeCalcTotal())})</Button></>}>
         <div className="space-y-5">
-          <Alert type="info">El dealer declara las fichas exactas que entrega como rake. Pasan de circulaci&#243;n a b&#243;veda.</Alert>
+          <Alert type="info">El dealer declara las fichas exactas que entrega como rake. Pasan de circulación a bóveda.</Alert>
           <div>
             <label className="block text-sm font-medium text-silver mb-2">Mesa de origen *</label>
             {sesionesParaRake.length === 0 ? <Alert type="warning">No hay mesas activas.</Alert> : (
@@ -260,7 +261,7 @@ export default function TurnoPage() {
             )}
           </div>
           <div>
-            <label className="block text-sm font-medium text-silver mb-2 flex items-center gap-2"><Coins className="w-4 h-4 text-gold" />Fichas del rake (desde circulaci&#243;n) *</label>
+            <label className="block text-sm font-medium text-silver mb-2 flex items-center gap-2"><Coins className="w-4 h-4 text-gold" />Fichas del rake (desde circulación) *</label>
             <div className="p-3 bg-gold/10 rounded-lg text-center mb-3"><p className="text-sm text-silver">Total rake</p><p className="text-2xl font-bold text-gold">{fmt(rakeCalcTotal())}</p></div>
             {(() => { const fichasOrd = [...rakeFichasDisponibles].sort((a, b) => a.denominacion - b.denominacion); return fichasOrd.length === 0 ? <Alert type="warning">No hay fichas registradas.</Alert> : (
               <div className="space-y-2 max-h-[30vh] overflow-y-auto">{fichasOrd.map((ficha) => { const max = ficha.cantidad_circulacion; if (max <= 0) return (
@@ -269,7 +270,7 @@ export default function TurnoPage() {
                 </div>
               ); return (
                 <div key={ficha.id_ficha} className="flex items-center justify-between p-3 bg-slate rounded-lg border border-graphite">
-                  <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold" style={{ backgroundColor: ficha.color || '#D4AF37', color: ficha.denominacion >= 100 ? '#000' : '#fff' }}>{fmtDenom(ficha.denominacion)}</div><div><p className="font-medium text-pearl">{fmt(ficha.denominacion)}</p><p className="text-xs text-silver">Circulaci&#243;n: {max}</p></div></div>
+                  <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold" style={{ backgroundColor: ficha.color || '#D4AF37', color: ficha.denominacion >= 100 ? '#000' : '#fff' }}>{fmtDenom(ficha.denominacion)}</div><div><p className="font-medium text-pearl">{fmt(ficha.denominacion)}</p><p className="text-xs text-silver">Circulación: {max}</p></div></div>
                   <div className="flex items-center gap-2">
                     <button onClick={() => setRakeFichasSeleccion(p => ({ ...p, [ficha.id_ficha]: Math.max(0, (p[ficha.id_ficha] || 0) - 1) }))} className="w-8 h-8 rounded bg-graphite hover:bg-silver/20 flex items-center justify-center text-silver" disabled={!(rakeFichasSeleccion[ficha.id_ficha])}><Minus className="w-4 h-4" /></button>
                     <input type="number" min="0" max={max} value={rakeFichasSeleccion[ficha.id_ficha] || 0} onChange={(e) => setRakeFichasSeleccion(p => ({ ...p, [ficha.id_ficha]: Math.max(0, Math.min(max, parseInt(e.target.value) || 0)) }))} className="w-16 h-8 text-center bg-midnight border border-graphite rounded text-pearl" />
@@ -302,7 +303,7 @@ export default function TurnoPage() {
             <div>
               <h3 className="text-lg font-semibold text-pearl mb-3 flex items-center gap-2"><Coins className="w-5 h-5 text-gold" />Fichas para Caja</h3>
               <div className="grid grid-cols-3 gap-3 mb-4">
-                <div className="p-3 bg-slate rounded-lg text-center"><p className="text-silver text-sm">B&#243;veda</p><p className="text-lg font-bold text-gold">{fmt(previewData.fichas.valor_boveda)}</p></div>
+                <div className="p-3 bg-slate rounded-lg text-center"><p className="text-silver text-sm">Bóveda</p><p className="text-lg font-bold text-gold">{fmt(previewData.fichas.valor_boveda)}</p></div>
                 <div className="p-3 bg-slate rounded-lg text-center"><p className="text-silver text-sm">Caja Actual</p><p className="text-lg font-bold text-emerald">{fmt(previewData.fichas.valor_caja)}</p></div>
                 <div className="p-3 bg-slate rounded-lg text-center"><p className="text-silver text-sm">A Transferir</p><p className="text-lg font-bold text-sapphire">{fmt(calcularTotalTransferencia())}</p></div>
               </div>
@@ -310,7 +311,7 @@ export default function TurnoPage() {
                 <div key={ficha.id_ficha} className="flex items-center justify-between p-3 bg-slate rounded-lg border border-graphite">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold" style={{ backgroundColor: ficha.color || '#D4AF37', color: ficha.denominacion >= 100 ? '#000' : '#fff' }}>{fmtDenom(ficha.denominacion)}</div>
-                    <div><p className="font-medium text-pearl">{fmt(ficha.denominacion)}</p><p className="text-xs text-silver">B&#243;veda: {ficha.cantidad_boveda} | Caja: {ficha.cantidad_caja}</p></div>
+                    <div><p className="font-medium text-pearl">{fmt(ficha.denominacion)}</p><p className="text-xs text-silver">Bóveda: {ficha.cantidad_boveda} | Caja: {ficha.cantidad_caja}</p></div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button onClick={() => updateFichaCantidad(ficha.id_ficha, -10, ficha.cantidad_boveda)} className="w-8 h-8 rounded bg-graphite hover:bg-silver/20 flex items-center justify-center text-silver" disabled={!fichasACaja[ficha.id_ficha]}>-10</button>
@@ -323,14 +324,7 @@ export default function TurnoPage() {
                 </div>
               ))}</div>
             </div>
-            <div>
-              <h3 className="text-lg font-semibold text-pearl mb-3 flex items-center gap-2"><Briefcase className="w-5 h-5 text-emerald" />Dealers{selectedDealers.length > 0 && <Badge variant="success">{selectedDealers.length}</Badge>}</h3>
-              {previewData.personal.dealers.length === 0 ? <p className="text-silver text-sm">No hay dealers</p> : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{previewData.personal.dealers.map((d) => (
-                  <button key={d.id} onClick={() => toggleDealer(d.id)} className={`p-3 rounded-lg border-2 text-left ${selectedDealers.includes(d.id) ? 'border-emerald bg-emerald/10 text-pearl' : 'border-graphite bg-slate text-silver hover:border-silver'}`}><p className="font-medium">{d.apodo || d.nombre}</p>{selectedDealers.includes(d.id) && <CheckCircle className="w-4 h-4 text-emerald mt-1" />}</button>
-                ))}</div>
-              )}
-            </div>
+            {/* CAJEROS - Solo cajeros, dealers se asignan por mesa */}
             <div>
               <h3 className="text-lg font-semibold text-pearl mb-3 flex items-center gap-2"><DollarSign className="w-5 h-5 text-sapphire" />Cajeros{selectedCajeros.length > 0 && <Badge variant="info">{selectedCajeros.length}</Badge>}</h3>
               {previewData.personal.cajeros.length === 0 ? <p className="text-silver text-sm">No hay cajeros</p> : (
@@ -338,6 +332,7 @@ export default function TurnoPage() {
                   <button key={c.id} onClick={() => toggleCajero(c.id)} className={`p-3 rounded-lg border-2 text-left ${selectedCajeros.includes(c.id) ? 'border-sapphire bg-sapphire/10 text-pearl' : 'border-graphite bg-slate text-silver hover:border-silver'}`}><p className="font-medium">{c.apodo || c.nombre}</p>{selectedCajeros.includes(c.id) && <CheckCircle className="w-4 h-4 text-sapphire mt-1" />}</button>
                 ))}</div>
               )}
+              <p className="text-xs text-silver mt-2 italic">Los dealers se asignan directamente en cada mesa al iniciar la sesión.</p>
             </div>
             <Input label="Notas del Turno (opcional)" value={notas} onChange={(e) => setNotas(e.target.value)} placeholder="Observaciones..." />
             <div className="p-4 bg-gold/10 rounded-lg border border-gold/30">
@@ -346,7 +341,7 @@ export default function TurnoPage() {
                 <li>Caja actual: {fmt(previewData.fichas.valor_caja)}</li>
                 <li>A Transferir: {fmt(calcularTotalTransferencia())}</li>
                 <li><strong>Total Caja: {fmt(previewData.fichas.valor_caja + calcularTotalTransferencia())}</strong></li>
-                <li>Dealers: {selectedDealers.length} | Cajeros: {selectedCajeros.length}</li>
+                <li>Cajeros: {selectedCajeros.length}</li>
               </ul>
             </div>
           </div>
@@ -355,7 +350,7 @@ export default function TurnoPage() {
 
       {/* MODAL: Cerrar Turno */}
       <Modal isOpen={cerrarModal} onClose={() => setCerrarModal(false)} title="Cerrar Turno" footer={<><Button variant="ghost" onClick={() => setCerrarModal(false)}>Cancelar</Button><Button variant="danger" onClick={handleCerrarTurno} isLoading={procesando}><Square className="w-4 h-4" />Confirmar Cierre</Button></>}>
-        <Alert type="warning" title="&#191;Cerrar turno?">Deben estar cerradas todas las mesas y todos los jugadores con cashout.</Alert>
+        <Alert type="warning" title="¿Cerrar turno?">Deben estar cerradas todas las mesas y todos los jugadores con cashout.</Alert>
         {turno && (
           <div className="mt-4 p-4 bg-slate rounded-lg">
             <h4 className="font-medium text-pearl mb-2">Resumen:</h4>
@@ -363,9 +358,9 @@ export default function TurnoPage() {
               <div className="text-silver">Rake:</div><div className="text-gold font-medium">{fmt(turno.total_rake)}</div>
               <div className="text-silver">Propinas:</div><div className="text-pearl">{fmt(turno.total_propinas)}</div>
               <div className="text-silver">Gastos:</div><div className="text-ruby">{fmt(turno.total_gastos)}</div>
-              <div className="text-silver">Fichas circulaci&#243;n:</div><div className="text-amber">{fmt(fichasTurno?.valor_circulacion || 0)}</div>
+              <div className="text-silver">Fichas circulación:</div><div className="text-amber">{fmt(fichasTurno?.valor_circulacion || 0)}</div>
             </div>
-            {(fichasTurno?.valor_circulacion || 0) > 0 && <p className="text-xs text-amber mt-3">&#9888;&#65039; Quedan fichas en circulaci&#243;n &#x2014; jugadores se llevaron fichas.</p>}
+            {(fichasTurno?.valor_circulacion || 0) > 0 && <p className="text-xs text-amber mt-3">⚠️ Quedan fichas en circulación — jugadores se llevaron fichas.</p>}
           </div>
         )}
       </Modal>
